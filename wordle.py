@@ -39,7 +39,6 @@ class WordleGreedySolver:
                 self.n_ary_conversion
             )
 
-        self._guess_scores = None
         self._compute_guess_scores_and_prune()
 
     def best_guess(self):
@@ -47,8 +46,6 @@ class WordleGreedySolver:
             # The solution has been determined uniquely.
             # Return it.
             return self._solution_words[0]
-        if self._guess_scores is None:
-            self._compute_guess_scores_and_prune()
         return self._guess_words[np.argmin(self._guess_scores)]
 
     def add_guess_response(self, guess: str, response: str):
@@ -77,6 +74,7 @@ class WordleGreedySolver:
         if not prune_inds.all():
             self._response_matrix = self._response_matrix[~prune_inds, :]
             self._guess_words = self._guess_words[~prune_inds]
+            self._guess_scores = self._guess_scores[~prune_inds]
 
 
 def get_response(guess_word: str, solution_word: str) -> str:
