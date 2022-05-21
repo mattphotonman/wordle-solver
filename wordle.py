@@ -1,7 +1,7 @@
 """Tools for making optimal guesses at Wordle"""
 from collections import Counter
 import logging
-from typing import Iterable, Mapping
+from typing import Iterable, List, Mapping
 
 import numpy as np
 from tqdm import tqdm
@@ -132,3 +132,28 @@ def to_n_ary(s: str, char_digit_lookup: Mapping[str, int]) -> int:
         num_out += digit * base
         base *= len(char_digit_lookup)
     return num_out
+
+
+def simulate(solver: WordleGreedySolver, solution_word: str) -> List[str]:
+    """Outputs the series of guesses that the given solver would make
+    for the given solution word.
+
+    :param solver: a WordleGreedySolver instance
+    :param solution_word: the solution to the puzzle
+
+    :return: a list of guess words that the solver would make until
+        it makes the correct guess
+    """
+    guesses = []
+    while True:
+        guess = solver.best_guess()
+        guesses.append(guess)
+        if guess == solution_word:
+            return guesses
+        if len(guesses) > 1 and guesses[-1] == guesses[-2]:
+            raise ValueError(
+                f"Solver could not solve puzzle. Guesses: {guesses}"
+            )
+        solver.add_guess_response(
+            guess, get_response(guess, solution_word)
+        )
