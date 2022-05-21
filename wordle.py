@@ -46,7 +46,19 @@ class WordleGreedySolver:
             # The solution has been determined uniquely.
             # Return it.
             return self._solution_words[0]
-        return self._guess_words[np.argmin(self._guess_scores)]
+
+        candidate_inds = np.where(
+            self._guess_scores == self._guess_scores.min()
+        )[0]
+        if candidate_inds.size == 1:
+            return self._guess_words[candidate_inds[0]]
+        best_candidate_set = (
+            set(self._guess_words[candidate_inds]) &
+            set(self._solution_words)
+        )
+        if best_candidate_set:
+            return best_candidate_set.pop()
+        return self._guess_words[candidate_inds[0]]
 
     def add_guess_response(self, guess: str, response: str):
         response = to_n_ary(response, self.n_ary_conversion)
