@@ -1,7 +1,7 @@
 """Tools for making optimal guesses at Wordle"""
 from collections import Counter
 import logging
-from typing import Iterable, List, Mapping
+from typing import Iterable, List, Mapping, Set
 
 import numpy as np
 from tqdm import tqdm
@@ -13,6 +13,26 @@ logger = logging.getLogger(__name__)
 class WordleGreedySolver:
     """Computes the guess in a game of Wordle that minimizes uncertainty
     for the next turn.
+
+    The class takes as input the allowed set of guess words, and the set
+    of possible solution words. It is assumed that all words have the
+    same length.
+
+    The class internally computes and updates a matrix `self._response_matrix`,
+    where each row represents a potential guess word and each column
+    represents a potential solution word. The entries of the matrix are
+    integers that encode the response you would get if you guessed the guess
+    word given by the row, and if the solution were the solution word
+    given by the column.
+
+    Given the response matrix, the set of optimal guesses at a given time
+    can be computed, and is returned by `self.best_guesses()`. Here optimal
+    is defined in a greedy sense, meaning that an optimal guess reduces
+    uncertainty by the most possible immediately after the guess is made.
+
+    The function `self.add_guess_response` allows the user to input the
+    response given for a guess while playing an actual game. This will
+    result in an update of the internal state `self._response_matrix`.
     """
     n_ary_conversion = {'b': 0, 'y': 1, 'g': 2}
 
@@ -41,7 +61,11 @@ class WordleGreedySolver:
 
         self._compute_guess_scores_and_prune()
 
-    def best_guess(self):
+    def best_guesses(self) -> Set[str]:
+        """Returns the set of optimal guess words in the current state.
+        Optimality is defined as minimizing the score computed in
+        `self._guess_scores`.
+        """
         if self._response_matrix.shape[1] == 1:
             # The solution has been determined uniquely.
             # Return it.
@@ -50,15 +74,19 @@ class WordleGreedySolver:
         candidate_inds = np.where(
             self._guess_scores == self._guess_scores.min()
         )[0]
-        if candidate_inds.size == 1:
-            return self._guess_words[candidate_inds[0]]
         best_candidate_set = (
             set(self._guess_words[candidate_inds]) &
             set(self._solution_words)
         )
         if best_candidate_set:
-            return best_candidate_set.pop()
-        return self._guess_words[candidate_inds[0]]
+            return best_candidate_set
+        return set(self._guess_words[candidate_inds])
+
+    def best_guess(self) -> str:
+        """Returns an optimal guess word (an arbitrary choice from the
+        optimal set obtained by `self.best_guesses()`).
+        """
+        return self.best_guesses().pop()
 
     def add_guess_response(self, guess: str, response: str):
         response = to_n_ary(response, self.n_ary_conversion)
@@ -101,7 +129,7 @@ def get_response(guess_word: str, solution_word: str) -> str:
         `solution_word`. The response is a string that has the same
         length as both `guess_word` and `solution_word`, and in each
         position has the letter 'g' if the letters are the same in
-        both words, 'y' if the letters are different by the letter
+        both words, 'y' if the letters are different but the letter
         in the `guess_word` occurs somewhere in the `solution_word`,
         and 'b' if the letter in the `guess_word` doesn't occur
         anywhere in the `solution_word`.
