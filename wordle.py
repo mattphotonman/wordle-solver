@@ -286,19 +286,26 @@ def entropy(row: np.ndarray) -> float:
 
 # Simulation functions
 
-def simulate(solver: WordleGreedySolver, solution_word: str) -> List[str]:
+def simulate(
+        solver: WordleGreedySolver, solution_word: str,
+        uncertainty_metric: Callable[[np.ndarray], float]=None
+) -> List[str]:
     """Outputs the series of guesses that the given solver would make
     for the given solution word.
 
     :param solver: a WordleGreedySolver instance
     :param solution_word: the solution to the puzzle
+    :param uncertainty_metric: a function that takes in a row of
+        the response matrix and outputs an uncertainty score.
+        The best guess word(s) will minimize this score. See docstring of
+        WordleGreedySolver.best_guess() for more details.
 
     :return: a list of guess words that the solver would make until
         it makes the correct guess
     """
     guesses = []
     while True:
-        guess = solver.best_guess()
+        guess = solver.best_guess(uncertainty_metric)
         guesses.append(guess)
         if guess == solution_word:
             return guesses
