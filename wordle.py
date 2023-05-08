@@ -97,7 +97,7 @@ class WordleGreedySolver:
         if self._response_matrix.shape[1] == 1:
             # The solution has been determined uniquely.
             # Return it.
-            return self._solution_words[0]
+            return set(self._solution_words)
 
         guess_scores = self._compute_guess_scores(uncertainty_metric)
         candidate_inds = np.where(
