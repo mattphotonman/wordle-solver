@@ -25,10 +25,16 @@ class WordleGreedySolver:
     word given by the row, and if the solution were the solution word
     given by the column.
 
+    self._response_matrix.shape = (
+        len(self._guess_words), len(self._solution_words)
+    )
+
     Given the response matrix, the set of optimal guesses at a given time
     can be computed, and is returned by `self.best_guesses()`. Here optimal
     is defined in a greedy sense, meaning that an optimal guess reduces
     uncertainty by the most possible immediately after the guess is made.
+    The definition of uncertainty can be specified by passing an
+    uncertainty_metric function to `self.best_guesses()`.
 
     The function `self.add_guess_response` allows the user to input the
     response given for a guess while playing an actual game. This will
@@ -37,6 +43,16 @@ class WordleGreedySolver:
     n_ary_conversion = {'b': 0, 'y': 1, 'g': 2}
 
     def __init__(self, guess_words: Iterable[str], solution_words: Iterable[str]):
+        """Creates a WordleGreedySolver instance.
+
+        :param guess_words: set of allowed guess words. Assumed to be all
+            the same length.
+        :param solution_words: set of words that are possible solutions to
+            the puzzle. Assumed to be all the same length, and to
+            be the same length as the words in `guess_words`. If any
+            solution words are not in the set of guess words, they
+            will be added to the guess words.
+        """
         solution_words = {s.lower() for s in solution_words}
         guess_words = {s.lower() for s in guess_words}
         assert solution_words
@@ -59,20 +75,32 @@ class WordleGreedySolver:
                 self.n_ary_conversion
             )
 
-        self._compute_guess_scores_and_prune()
+        self._prune()
 
-    def best_guesses(self) -> Set[str]:
+    def best_guesses(
+            self, uncertainty_metric: Callable[[np.ndarray], float]=None
+    ) -> Set[str]:
         """Returns the set of optimal guess words in the current state.
-        Optimality is defined as minimizing the score computed in
-        `self._guess_scores`.
+        Optimality is defined as minimizing the score computed by the
+        `uncertainty_metric` function.
+
+        :param uncertainty_metric: a function that takes in a row of
+            `self._response_matrix` and outputs an uncertainty
+            score that is a measure of how much uncertainty will
+            remain once you get the response to the guess word
+            corresponding to the row. The best guess word(s) will
+            minimize this score.
+
+        :return: the optimal guess words in the current state
         """
         if self._response_matrix.shape[1] == 1:
             # The solution has been determined uniquely.
             # Return it.
             return self._solution_words[0]
 
+        guess_scores = self._compute_guess_scores(uncertainty_metric)
         candidate_inds = np.where(
-            self._guess_scores == self._guess_scores.min()
+            guess_scores == guess_scores.min()
         )[0]
         best_candidate_set = (
             set(self._guess_words[candidate_inds]) &
@@ -82,13 +110,36 @@ class WordleGreedySolver:
             return best_candidate_set
         return set(self._guess_words[candidate_inds])
 
-    def best_guess(self) -> str:
+    def best_guess(
+            self, uncertainty_metric: Callable[[np.ndarray], float]=None
+    ) -> str:
         """Returns an optimal guess word (an arbitrary choice from the
         optimal set obtained by `self.best_guesses()`).
+
+        :param uncertainty_metric: a function that takes in a row of
+            `self._response_matrix` and outputs an uncertainty
+            score that is a measure of how much uncertainty will
+            remain once you get the response to the guess word
+            corresponding to the row. The best guess word(s) will
+            minimize this score.
+
+        :return: an optimal guess word in the current state
         """
-        return self.best_guesses().pop()
+        return self.best_guesses(uncertainty_metric).pop()
 
     def add_guess_response(self, guess: str, response: str):
+        """Input the response received for a given guess while playing
+        the game, and update the internal state (`self._response_matrix`)
+        accordingly.
+
+        :param guess: the word guessed
+        :param response: the response received when making the guess,
+            e.g. 'gygbb' means that the first and third letter of the
+            guess are correct, the second letter of the guess is
+            present in the solution, but at a different position,
+            and the fourth and fifth letters in the guess are not
+            present in the solution word.
+        """
         response = to_n_ary(response, self.n_ary_conversion)
         row_idx = np.searchsorted(self._guess_words, guess)
         if self._guess_words[row_idx] != guess:
@@ -101,21 +152,27 @@ class WordleGreedySolver:
         self._response_matrix = self._response_matrix[:, solution_inds]
         self._solution_words = self._solution_words[solution_inds]
 
-        self._compute_guess_scores_and_prune()
+        self._prune()
 
-    def _compute_guess_scores_and_prune(self):
-        self._guess_scores = np.apply_along_axis(
-            lambda row: np.unique(row, return_counts=True)[1].max(),
-            1,
-            self._response_matrix
+    def _compute_guess_scores(
+            self, uncertainty_metric: Callable[[np.ndarray], float]=None
+    ):
+        if uncertainty_metric is None:
+            uncertainty_metric = largest_solution_set_size
+        return np.apply_along_axis(
+            uncertainty_metric, 1, self._response_matrix
         )
-        
-        prune_inds = self._guess_scores == self._response_matrix.shape[1]
+
+    def _prune(self):
+        prune_inds = np.apply_along_axis(
+            lambda row: np.unique(row).size == 1, 1, self._response_matrix
+        )
         if not prune_inds.all():
             self._response_matrix = self._response_matrix[~prune_inds, :]
             self._guess_words = self._guess_words[~prune_inds]
-            self._guess_scores = self._guess_scores[~prune_inds]
 
+
+# Helper functions
 
 def get_response(guess_word: str, solution_word: str) -> str:
     """Returns the response if the given guess is made.
@@ -173,6 +230,31 @@ def to_n_ary(s: str, char_digit_lookup: Mapping[str, int]) -> int:
         base *= len(char_digit_lookup)
     return num_out
 
+
+# Uncertainty metrics
+# These are functions that take in a single row of the response matrix
+# and return a score representing the remaining uncertainty you will
+# have after getting a response if you make the guess that corresponds
+# to the row. In general, a good guess will minimize this score.
+
+def largest_solution_set_size(row: np.ndarray) -> float:
+    """Returns the size of the largest response group in the row."""
+    return np.unique(row, return_counts=True)[1].max()
+
+def average_solution_set_size(row: np.ndarray) -> float:
+    """Returns a value proportional to the average response group size
+    over all elements in the row.
+    """
+    counts = np.unique(row, return_counts=True)[1]
+    return np.sum(counts ** 2)
+
+def entropy(row: np.ndarray) -> float:
+    """Returns a value proportional to the entroy of the row."""
+    counts = np.unique(row, return_counts=True)[1]
+    return np.sum(counts * np.log(counts))
+
+
+# Simulation functions
 
 def simulate(solver: WordleGreedySolver, solution_word: str) -> List[str]:
     """Outputs the series of guesses that the given solver would make
