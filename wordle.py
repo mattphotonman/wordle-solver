@@ -1,7 +1,7 @@
 """Tools for making optimal guesses at Wordle"""
 from collections import Counter
 import logging
-from typing import Iterable, List, Mapping, Set
+from typing import Callable, Iterable, List, Mapping, Set
 
 import numpy as np
 from tqdm import tqdm
@@ -55,7 +55,6 @@ class WordleGreedySolver:
         """
         solution_words = {s.lower() for s in solution_words}
         guess_words = {s.lower() for s in guess_words}
-        assert solution_words
         self._solution_words = np.array(sorted(solution_words))
         self._guess_words = np.array(sorted(guess_words | solution_words))
 
@@ -93,6 +92,8 @@ class WordleGreedySolver:
 
         :return: the optimal guess words in the current state
         """
+        self._check_non_empty()
+
         if self._response_matrix.shape[1] == 1:
             # The solution has been determined uniquely.
             # Return it.
@@ -140,6 +141,8 @@ class WordleGreedySolver:
             and the fourth and fifth letters in the guess are not
             present in the solution word.
         """
+        self._check_non_empty()
+
         response = to_n_ary(response, self.n_ary_conversion)
         row_idx = np.searchsorted(self._guess_words, guess)
         if self._guess_words[row_idx] != guess:
@@ -154,6 +157,23 @@ class WordleGreedySolver:
 
         self._prune()
 
+    def save(self, outfile):
+        np.savez(
+            outfile,
+            solution_words=self._solution_words,
+            guess_words=self._guess_words,
+            response_matrix=self._response_matrix,
+        )
+
+    @classmethod
+    def from_file(cls, infile):
+        solver = cls([], [])
+        loaded = np.load(infile)
+        solver._solution_words = loaded["solution_words"]
+        solver._guess_words = loaded["guess_words"]
+        solver._response_matrix = loaded["response_matrix"]
+        return solver
+
     def _compute_guess_scores(
             self, uncertainty_metric: Callable[[np.ndarray], float]=None
     ):
@@ -164,12 +184,22 @@ class WordleGreedySolver:
         )
 
     def _prune(self):
+        if self._response_matrix.shape[0] == 0:
+            return
+
         prune_inds = np.apply_along_axis(
             lambda row: np.unique(row).size == 1, 1, self._response_matrix
         )
         if not prune_inds.all():
             self._response_matrix = self._response_matrix[~prune_inds, :]
             self._guess_words = self._guess_words[~prune_inds]
+
+    def _check_non_empty(self):
+        if self._response_matrix.shape[0] == 0:
+            raise ValueError("No guess words remaining")
+
+        if self._response_matrix.shape[1] == 0:
+            raise ValueError("No solution words remaining")
 
 
 # Helper functions
